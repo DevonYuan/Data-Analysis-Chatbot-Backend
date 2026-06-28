@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from response import receive_file, answer_question
 from shared import (
@@ -35,7 +35,7 @@ def wipe():
 
 
 @app.post("/register")
-async def register(username: str, password: str):
+async def register(username: str = Form(...), password: str = Form(...)):
     if contains_user(username):
         return "Username is taken!"
 
@@ -50,7 +50,7 @@ async def register(username: str, password: str):
 
 
 @app.post("/delete-user")
-async def delete_user(username: str):
+async def delete_user(username: str = Form(...)):
     if not contains_user(username):
         return "The database does not contain this user!"
 
@@ -63,7 +63,7 @@ async def delete_user(username: str):
 
 
 @app.post("/login")
-async def login(username: str, password: str):
+async def login(username: str = Form(...), password: str = Form(...)):
     cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
     result = cursor.fetchall()
     if len(result) == 1 and username == result[0][1] and password == result[0][2]:
@@ -73,7 +73,7 @@ async def login(username: str, password: str):
 
 
 @app.post("/create-chat")
-async def create_chat(username: str, title: str):
+async def create_chat(username: str = Form(...), title: str = Form(...)):
     if not contains_user(username):
         return "The database does not contain this user!"
 
@@ -89,7 +89,7 @@ async def create_chat(username: str, title: str):
 
 
 @app.post("/delete-chat")
-async def delete_chat(username: str, title: str):
+async def delete_chat(username: str = Form(...), title: str = Form(...)):
     if not contains_user(username):
         return "The database does not contain this user!"
 
@@ -113,7 +113,9 @@ async def delete_chat(username: str, title: str):
 
 
 @app.post("/rename-chat")
-async def rename_chat(username: str, old_title: str, new_title: str):
+async def rename_chat(
+    username: str = Form(...), old_title: str = Form(...), new_title: str = Form(...)
+):
     if not contains_user(username):
         return "The database does not contain this user!"
     if not contains_chat(username, old_title):
@@ -138,14 +140,19 @@ async def rename_chat(username: str, old_title: str, new_title: str):
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile, user: str, chat: str):
+async def upload_file(file: UploadFile, user: str = Form(...), chat: str = Form(...)):
     result = receive_file(file, user, chat)
     connection.commit()
     return result
 
 
 @app.post("/send-message")
-async def send_message(username: str, title: str, message: str, sender: str):
+async def send_message(
+    username: str = Form(...),
+    title: str = Form(...),
+    message: str = Form(...),
+    sender: str = Form(...),
+):
     if not contains_user(username):
         return "The database does not contain this user!"
 
@@ -158,7 +165,6 @@ async def send_message(username: str, title: str, message: str, sender: str):
     )
     connection.commit()
 
-    # Get AI answer and (optionally) store it as a message too
     ai_reply = answer_question(username, title, message)
     cursor.execute(
         "INSERT INTO messages (username, title, message, sender) VALUES (%s, %s, %s, %s)",
@@ -166,3 +172,32 @@ async def send_message(username: str, title: str, message: str, sender: str):
     )
     connection.commit()
     return ai_reply
+
+
+@app.get("/get-chats")
+async def get_chats(username: str):
+    if not contains_user(username):
+        return []
+
+    cursor.execute("SELECT title FROM chats WHERE username = %s", (username,))
+    rows = cursor.fetchall()
+
+    # rows is a list of tuples like: [('Chat 1',), ('Chat 2',)]
+    return [row[0] for row in rows]
+
+
+@app.get("/get-messages")
+async def get_messages(username: str, title: str):
+    if not contains_user(username):
+        return []
+
+    if not contains_chat(username, title):
+        return []
+
+    cursor.execute(
+        "SELECT message, sender FROM messages WHERE username = %s AND title = %s",
+        (username, title),
+    )
+    rows = cursor.fetchall()
+
+    return [{"sender": row[1], "text": row[0]} for row in rows]
