@@ -3,6 +3,7 @@ from supabase import create_client
 from google import genai
 import psycopg2
 import os
+import bcrypt
 
 load_dotenv()
 
@@ -20,6 +21,16 @@ supabase = create_client(
 )
 
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+
+def hash_password(password: str) -> str:
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
+    return hashed.decode('utf-8')
+
+
+def verify_password(password: str, hashed_password: str) -> bool:
+    return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 
 def contains_user(username: str) -> bool:

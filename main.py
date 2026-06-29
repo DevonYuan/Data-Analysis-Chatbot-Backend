@@ -10,6 +10,8 @@ from shared import (
     create_user_folder,
     delete_user_folder,
     empty_bucket,
+    hash_password,
+    verify_password,
 )
 
 app = FastAPI()
@@ -45,9 +47,10 @@ async def register(username: str = Form(...), password: str = Form(...)):
 
     cursor.execute("SELECT COUNT(*) FROM users")
     length = cursor.fetchone()[0]
+    hashed_password = hash_password(password)
     cursor.execute(
         "INSERT INTO users (id, username, password) VALUES (%s, %s, %s)",
-        (length + 1, username, password),
+        (length + 1, username, hashed_password),
     )
     connection.commit()
     create_user_folder(username)
@@ -72,7 +75,7 @@ async def delete_user(username: str = Form(...)):
 async def login(username: str = Form(...), password: str = Form(...)):
     cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
     result = cursor.fetchall()
-    if len(result) == 1 and username == result[0][1] and password == result[0][2]:
+    if len(result) == 1 and username == result[0][1] and verify_password(password, result[0][2]):
         return "Logged in!"
 
     return "The password is incorrect, or the user does not exist!"
