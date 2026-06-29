@@ -7,6 +7,9 @@ from shared import (
     contains_user,
     contains_chat,
     contains_file,
+    create_user_folder,
+    delete_user_folder,
+    empty_bucket,
 )
 
 app = FastAPI()
@@ -31,6 +34,7 @@ def wipe():
     cursor.execute("DELETE FROM chats")
     cursor.execute("DELETE FROM filenames")
     connection.commit()
+    empty_bucket()
     return "All data has been removed"
 
 
@@ -46,6 +50,7 @@ async def register(username: str = Form(...), password: str = Form(...)):
         (length + 1, username, password),
     )
     connection.commit()
+    create_user_folder(username)
     return "Username is now registered!"
 
 
@@ -59,6 +64,7 @@ async def delete_user(username: str = Form(...)):
     cursor.execute("DELETE FROM messages WHERE username = %s", (username,))
     cursor.execute("DELETE FROM filenames WHERE username = %s", (username,))
     connection.commit()
+    delete_user_folder(username)
     return "The user and their data have been wiped!"
 
 

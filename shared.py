@@ -41,3 +41,55 @@ def contains_file(username: str, chat: str) -> bool:
         (username, chat),
     )
     return cursor.fetchone() is not None
+
+
+def create_user_folder(username: str):
+    folder_path = f"{username}/.keep"
+    try:
+        supabase.storage.from_("user-uploads").upload(folder_path, b"")
+    except Exception as e:
+        if "already exists" not in str(e).lower():
+            raise e
+
+
+BUCKET_NAME = "user-uploads"
+
+
+def _collect_bucket_paths(prefix: str = "") -> list[str]:
+    bucket = supabase.storage.from_(BUCKET_NAME)
+    items = bucket.list(prefix)
+    if not items:
+        return []
+
+    paths: list[str] = []
+    for item in items:
+        name = item["name"]
+        if name == ".emptyFolderPlaceholder":
+            continue
+
+        path = f"{prefix}/{name}" if prefix else name
+        if item.get("id") is None:
+            paths.extend(_collect_bucket_paths(path))
+        else:
+            paths.append(path)
+
+    return paths
+
+
+def delete_user_folder(username: str):
+    try:
+        paths = _collect_bucket_paths(username)
+        if paths:
+            supabase.storage.from_(BUCKET_NAME).remove(paths)
+    except Exception as e:
+        print(f"Error deleting user folder: {e}")
+
+
+def empty_bucket():
+    try:
+        paths = _collect_bucket_paths()
+        if paths:
+            supabase.storage.from_(BUCKET_NAME).remove(paths)
+    except Exception as e:
+        print(f"Error emptying bucket: {e}")
+        raise

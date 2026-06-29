@@ -42,7 +42,7 @@ def receive_file(file: UploadFile, user: str, chat_title: str):
     if contains_file(user, chat_title):
         return "This user has already uploaded a file to this chat"
 
-    file_url = save_uploaded_file(file)
+    file_url = save_uploaded_file(file, user)
 
     cursor.execute(
         "INSERT INTO filenames (username, chat, filename, file_url) VALUES (%s, %s, %s, %s)",
@@ -53,9 +53,9 @@ def receive_file(file: UploadFile, user: str, chat_title: str):
     return file_url
 
 
-def save_uploaded_file(file: UploadFile):
+def save_uploaded_file(file: UploadFile, user: str):
     file_bytes = file.file.read()
-    path = file.filename
+    path = f"{user}/{file.filename}"
 
     supabase.storage.from_("user-uploads").upload(path, file_bytes)
     url = supabase.storage.from_("user-uploads").get_public_url(path)
