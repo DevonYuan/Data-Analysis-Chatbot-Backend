@@ -2,7 +2,7 @@
 
 This is the FastAPI backend for **DataLens AI**, a full-stack AI data analysis application that allows users to create analysis chats, upload datasets, and ask natural-language questions about their data using Python and Pandas.
 
-The backend handles user authentication, chat session management, message processing, database queries, and API communication with the frontend. Rather than plugging the users' questions directly into the Gemini API, the backend generates and runs Python code, using the Pandas library to conduct data analysis. This was done to hedge against the hallucination of AI models. 
+The backend handles user authentication, chat session management, message processing, database queries, and API communication with the frontend. Rather than plugging the users' questions directly into the Gemini API, the backend generates and runs Python code, using the Pandas library to conduct data analysis. This was done because AI models hallucinate and this is a way to hedge against that hallucination. 
 
 ## Features
 
