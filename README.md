@@ -43,7 +43,7 @@ This project is still under active development. Some current limitations include
 
 Planned production-quality improvements include:
 
-* Hash passwords using a library such as `bcrypt` or `passlib`
+* Hashing passwords
 * Return structured JSON responses from all endpoints
 * Add proper HTTP status codes for errors
 * Add request validation with Pydantic models
