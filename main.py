@@ -1,4 +1,5 @@
-from fastapi import FastAPI, UploadFile, Form
+from fastapi import FastAPI, Request, UploadFile, Form
+from rate_limiter import rate_limit_ip, rate_limit_user
 from fastapi.middleware.cors import CORSMiddleware
 from response import receive_file, answer_question
 from shared import (
@@ -41,7 +42,11 @@ def wipe():
 
 
 @app.post("/register")
-async def register(username: str = Form(...), password: str = Form(...)):
+async def register(
+    request: Request, username: str = Form(...), password: str = Form(...)
+):
+    # Anti-brute-force: 5 registration attempts per minute per IP
+    rate_limit_ip(request, max_requests=5, window_seconds=60, endpoint="register")
     if contains_user(username):
         return "Username is taken!"
 
@@ -72,17 +77,27 @@ async def delete_user(username: str = Form(...)):
 
 
 @app.post("/login")
-async def login(username: str = Form(...), password: str = Form(...)):
+async def login(request: Request, username: str = Form(...), password: str = Form(...)):
+    # Anti-brute-force: 5 login attempts per minute per IP
+    rate_limit_ip(request, max_requests=5, window_seconds=60, endpoint="login")
     cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
     result = cursor.fetchall()
-    if len(result) == 1 and username == result[0][1] and verify_password(password, result[0][2]):
+    if (
+        len(result) == 1
+        and username == result[0][1]
+        and verify_password(password, result[0][2])
+    ):
         return "Logged in!"
 
     return "The password is incorrect, or the user does not exist!"
 
 
 @app.post("/create-chat")
-async def create_chat(username: str = Form(...), title: str = Form(...)):
+async def create_chat(
+    request: Request, username: str = Form(...), title: str = Form(...)
+):
+    # General: 30 requests per minute per IP
+    rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="create-chat")
     if not contains_user(username):
         return "The database does not contain this user!"
 
@@ -98,7 +113,11 @@ async def create_chat(username: str = Form(...), title: str = Form(...)):
 
 
 @app.post("/delete-chat")
-async def delete_chat(username: str = Form(...), title: str = Form(...)):
+async def delete_chat(
+    request: Request, username: str = Form(...), title: str = Form(...)
+):
+    # General: 30 requests per minute per IP
+    rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="delete-chat")
     if not contains_user(username):
         return "The database does not contain this user!"
 
@@ -123,8 +142,13 @@ async def delete_chat(username: str = Form(...), title: str = Form(...)):
 
 @app.post("/rename-chat")
 async def rename_chat(
-    username: str = Form(...), old_title: str = Form(...), new_title: str = Form(...)
+    request: Request,
+    username: str = Form(...),
+    old_title: str = Form(...),
+    new_title: str = Form(...),
 ):
+    # General: 30 requests per minute per IP
+    rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="rename-chat")
     if not contains_user(username):
         return "The database does not contain this user!"
     if not contains_chat(username, old_title):
@@ -149,7 +173,11 @@ async def rename_chat(
 
 
 @app.post("/upload")
-async def upload_file(file: UploadFile, user: str = Form(...), chat: str = Form(...)):
+async def upload_file(
+    request: Request, file: UploadFile, user: str = Form(...), chat: str = Form(...)
+):
+    # General: 30 requests per minute per IP
+    rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="upload")
     result = receive_file(file, user, chat)
     connection.commit()
     return result
@@ -157,11 +185,18 @@ async def upload_file(file: UploadFile, user: str = Form(...), chat: str = Form(
 
 @app.post("/send-message")
 async def send_message(
+    request: Request,
     username: str = Form(...),
     title: str = Form(...),
     message: str = Form(...),
     sender: str = Form(...),
 ):
+    # AI abuse prevention: 10 AI messages per minute per user
+    rate_limit_user(
+        username, max_requests=10, window_seconds=60, endpoint="send-message"
+    )
+    # Also limit by IP as a secondary guard
+    rate_limit_ip(request, max_requests=20, window_seconds=60, endpoint="send-message")
     if not contains_user(username):
         return "The database does not contain this user!"
 
