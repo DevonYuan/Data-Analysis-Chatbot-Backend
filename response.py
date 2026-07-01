@@ -15,7 +15,6 @@ import io
 import contextlib
 import pandas as pd
 
-
 class GeminiLLM(LLM):
     def __init__(self, model="gemini-2.5-flash"):
         super().__init__()
@@ -28,7 +27,6 @@ class GeminiLLM(LLM):
             input=prompt,
         )
         return response.output_text
-
 
 def receive_file(file: UploadFile, user: str, chat_title: str):
     if not contains_user(user) or not contains_chat(user, chat_title):
@@ -52,7 +50,6 @@ def receive_file(file: UploadFile, user: str, chat_title: str):
 
     return file_url
 
-
 def save_uploaded_file(file: UploadFile, user: str):
     file_bytes = file.file.read()
     path = f"{user}/{file.filename}"
@@ -61,7 +58,6 @@ def save_uploaded_file(file: UploadFile, user: str):
     url = supabase.storage.from_("user-uploads").get_public_url(path)
     return url
 
-
 def answer_question(user: str, chat_title: str, question: str):
     if not contains_user(user):
         return "This user does not exist"
@@ -69,69 +65,124 @@ def answer_question(user: str, chat_title: str, question: str):
     if not contains_chat(user, chat_title):
         return "The user does not have a chat with this title"
 
-    for _ in range(3):
-        prompt = (
-            "Classify the following question as 'conceptual', 'calculation', or 'irrelevant'.\n"
-            f"{question}\n"
-            "Only return one of these exact words with nothing else."
+    # Get chat messages ordered by id
+    cursor.execute("SELECT message FROM messages WHERE username = %s AND title = %s", (user, chat_title))
+    chat_messages = [row[0] for row in cursor.fetchall()]
+
+    # Check if file exists and load its content
+    file_content = ""
+    if contains_file(user, chat_title):
+        # Load file URL
+        cursor.execute(
+            "SELECT file_url FROM filenames WHERE username = %s AND chat = %s",
+            (user, chat_title),
         )
+        row = cursor.fetchone()
+        if row:
+            file_url = row[0]
+            extension = os.path.splitext(file_url)[1].lower()
+            # Load dataframe
+            data = load_dataframe_from_url(file_url, extension)
+            file_content = data.to_string()
 
-        response = gemini_client.interactions.create(
-            model="gemini-2.5-flash",
-            input=prompt,
-        )
-        qtype = response.output_text.strip().lower()
+    # Build context parts
+    context_parts = []
+    if chat_messages:
+        context_parts.append("Chat history:")
+        for msg in chat_messages:
+            context_parts.append(f"User: {msg}")
+    if file_content:
+        context_parts.append("Dataset:")
+        context_parts.append(file_content)
 
-        if qtype == "conceptual":
-            return conceptual_question(question)
+    context = "\n".join(context_parts)
 
-        if qtype == "calculation":
-            return calculation_question(question, user, chat_title)
+    # Estimate tokens (approx word count)
+    def estimate_tokens(text):
+        return len(text.split())
 
-        if qtype == "irrelevant":
-            return irrelevant_question(question)
+    max_tokens = 6000
+    # Include question tokens
+    current_tokens = estimate_tokens(context) + estimate_tokens(question)
 
-    return conceptual_question(question)
+    # Trim oldest messages if needed
+    while current_tokens > max_tokens and chat_messages:
+        # Remove the oldest message
+        chat_messages.pop(0)
+        # Rebuild context without that message
+        context_parts = []
+        if chat_messages:
+            context_parts.append("Chat history:")
+            for msg in chat_messages:
+                context_parts.append(f"User: {msg}")
+        if file_content:
+            context_parts.append("Dataset:")
+            context_parts.append(file_content)
+        context = "\n".join(context_parts)
+        current_tokens = estimate_tokens(context) + estimate_tokens(question)
 
+    final_context = "\n".join(context_parts)
 
-def conceptual_question(question: str):
+    # Build classification prompt
+    classification_prompt = (
+        f"Given the following context (total tokens: {estimate_tokens(final_context)}):\n"
+        f"{final_context}\n\n"
+        "Classify the following question as 'conceptual', 'calculation', or 'irrelevant'.\n"
+        f"Question:\n{question}\n"
+        "Only return one of these exact words with nothing else."
+    )
+
     response = gemini_client.interactions.create(
         model="gemini-2.5-flash",
-        input=f"Answer the following question conceptually:\n{question}",
+        input=classification_prompt,
+    )
+    qtype = response.output_text.strip().lower()
+
+    if qtype == "conceptual":
+        return conceptual_question(question, final_context)
+    if qtype == "calculation":
+        return calculation_question(question, user, chat_title, final_context)
+    if qtype == "irrelevant":
+        return irrelevant_question(question, final_context)
+    # fallback
+    return conceptual_question(question, final_context)
+
+def conceptual_question(question: str, context: str = ""):
+    prompt = f"Given the following context:\\n{context}\\n\\nAnswer the following question conceptually:\\n{question}"
+    response = gemini_client.interactions.create(
+        model="gemini-2.5-flash",
+        input=prompt,
     )
     return response.output_text
 
-
-def calculation_question(question: str, user: str, chat_title: str):
-    prompt = (
-        "Write Python code using the pandas library to answer the following question:\n"
-        f"{question}\n"
-        "Your code must:\n"
-        "- Use the already-loaded DataFrame named `data`\n"
-        "- Print exactly one number using a single print() statement\n"
-        "- Include comments explaining each step\n"
-        "- Make an educated guess if the question is ambiguous\n"
-        "Only return raw Python code with no explanation.\n"
-        "Do not surround the code with any markdown formatting"
-    )
-
+def calculation_question(question: str, user: str, chat_title: str, context: str = ""):
+    # Load data if file exists (same as before)
     data = None
-
     if contains_file(user, chat_title):
         cursor.execute(
             "SELECT file_url FROM filenames WHERE username = %s AND chat = %s",
             (user, chat_title),
         )
         row = cursor.fetchone()
-
         if row:
             file_url = row[0]
             extension = os.path.splitext(file_url)[1].lower()
-
             data = load_dataframe_from_url(file_url, extension)
 
-            prompt += "\n\nHere is the dataset named `data` (string representation):\n"
-            prompt += data.to_string()
+    # Build prompt with context
+    prompt = (
+        "Given the following conversation history and dataset:\\n"
+        f"{context}\\n"
+        "Question:\\n"
+        f"{question}\\n"
+        "Write Python code using the pandas library to answer the following question:\\n"
+        "- Use the already-loaded DataFrame named `data`\\n"
+        "- Print exactly one number using a single print() statement\\n"
+        "- Include comments explaining each step\\n"
+        "- Make an educated guess if the question is ambiguous\\n"
+        "Only return raw Python code with no explanation.\\n"
+        "Do not surround the code with any markdown formatting"
+    )
 
     for _ in range(5):
         response = gemini_client.interactions.create(
@@ -141,7 +192,6 @@ def calculation_question(question: str, user: str, chat_title: str):
         code = response.output_text.strip()
 
         code = code.replace("```python", "").replace("```", "").strip()
-        print(code)
 
         try:
             result = run_and_capture(code, data)
@@ -152,8 +202,7 @@ def calculation_question(question: str, user: str, chat_title: str):
     if data is not None:
         return pandasai_fallback(data, question)
 
-    return conceptual_question(question)
-
+    return conceptual_question(question, context)
 
 def load_dataframe_from_url(file_url: str, extension: str):
     path = file_url.split("/user-uploads/")[1]
@@ -167,7 +216,6 @@ def load_dataframe_from_url(file_url: str, extension: str):
     elif extension == ".xlsx":
         return pd.read_excel(file_bytes)
 
-
 def run_and_capture(code_str: str, data: pd.DataFrame | None):
     buffer = io.StringIO()
     sandbox_globals = {"pd": pd}
@@ -180,11 +228,12 @@ def run_and_capture(code_str: str, data: pd.DataFrame | None):
 
     return buffer.getvalue()
 
-
-def irrelevant_question(question: str):
+def irrelevant_question(question: str, context: str = ""):
     prompt = (
+        "Given the following context:\\n"
+        f"{context}\\n\\n"
         "Answer the following question conceptually, and explicitly state that "
-        "it is not relevant to the topic of statistics:\n"
+        "it is not relevant to the topic of statistics:\\n"
         f"{question}"
     )
 
@@ -193,7 +242,6 @@ def irrelevant_question(question: str):
         input=prompt,
     )
     return response.output_text
-
 
 def pandasai_fallback(data: pd.DataFrame, question: str):
     llm = GeminiLLM(model="gemini-2.5-flash")
