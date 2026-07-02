@@ -14,6 +14,8 @@ connection = psycopg2.connect(
     user=os.getenv("SUPABASE_USER"),
     password=os.getenv("SUPABASE_PASSWORD"),
 )
+
+connection.autocommit = True; 
 cursor = connection.cursor()
 
 supabase = create_client(
