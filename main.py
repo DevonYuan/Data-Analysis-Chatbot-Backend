@@ -1,7 +1,10 @@
-from fastapi import FastAPI, Request, UploadFile, Form
+from fastapi import FastAPI, Request, UploadFile, Form, Header, HTTPException
 from rate_limiter import rate_limit_ip, rate_limit_user
 from fastapi.middleware.cors import CORSMiddleware
 from response import receive_file, answer_question
+import os
+import jwt
+from datetime import datetime, timedelta
 from shared import (
     connection,
     cursor,
@@ -18,7 +21,7 @@ from shared import (
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -48,7 +51,7 @@ async def register(
     # Anti-brute-force: 5 registration attempts per minute per IP
     rate_limit_ip(request, max_requests=5, window_seconds=60, endpoint="register")
     if contains_user(username):
-        return "Username is taken!"
+        raise HTTPException(status_code=400, detail="Username is taken!")
 
     cursor.execute("SELECT COUNT(*) FROM users")
     length = cursor.fetchone()[0]
@@ -78,18 +81,25 @@ async def delete_user(username: str = Form(...)):
 
 @app.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    # Anti-brute-force: 5 login attempts per minute per IP
+    # Anti‑brute‑force: 5 login attempts per minute per IP
     rate_limit_ip(request, max_requests=5, window_seconds=60, endpoint="login")
+
     cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
     result = cursor.fetchall()
+
     if (
         len(result) == 1
         and username == result[0][1]
         and verify_password(password, result[0][2])
     ):
-        return "Logged in!"
+        token = jwt.encode(
+            {"sub": username, "exp": datetime.utcnow() + timedelta(minutes=15)},
+            os.getenv("JWT_SECRET_KEY"),
+            algorithm="HS256",
+        )
+        return {"access_token": token, "token_type": "bearer"}
 
-    return "The password is incorrect, or the user does not exist!"
+    raise HTTPException(status_code=401, detail="The password is incorrect, or the user does not exist!")
 
 
 @app.post("/create-chat")
