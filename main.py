@@ -21,12 +21,13 @@ from shared import (
     verify_email_token,
     is_user_verified,
 )
+import os
 
 # Later: The only origin allowed should be the frontend!
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
