@@ -1,6 +1,10 @@
 from dotenv import load_dotenv
 from supabase import create_client
 from google import genai
+from jose import JWTError, jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from datetime import datetime, timedelta
 import psycopg2
 import os
 import bcrypt
@@ -23,6 +27,48 @@ supabase = create_client(
 )
 
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+# JWT Configuration
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
+
+
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
+    return encoded_jwt
+
+
+async def get_current_user(token: str | None = Depends(oauth2_scheme)) -> str | None:
+    if token is None:
+        return None
+    try:
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        username: str = payload.get("sub")
+        if username is None:
+            return None
+        return username
+    except JWTError:
+        return None
+
+
+async def require_current_user(token: str = Depends(oauth2_scheme)) -> str:
+    username = await get_current_user(token)
+    if username is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return username
 
 
 def hash_password(password: str) -> str:

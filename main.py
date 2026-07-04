@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, UploadFile, Form
+from fastapi import FastAPI, Request, UploadFile, Form, Depends
 from rate_limiter import rate_limit_ip, rate_limit_user
 from fastapi.middleware.cors import CORSMiddleware
 from response import receive_file, answer_question
@@ -13,8 +13,11 @@ from shared import (
     empty_bucket,
     hash_password,
     verify_password,
+    create_access_token,
+    require_current_user,
 )
 
+# Later: The only origin allowed should be the frontend!
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -59,11 +62,13 @@ async def register(
     )
     connection.commit()
     create_user_folder(username)
-    return "Username is now registered!"
+    
+    access_token = create_access_token(data={"sub": username})
+    return {"message": "Username is now registered!", "access_token": access_token, "token_type": "bearer"}
 
 
 @app.post("/delete-user")
-async def delete_user(username: str = Form(...)):
+async def delete_user(username: str = Depends(require_current_user)):
     if not contains_user(username):
         return "The database does not contain this user!"
 
@@ -87,14 +92,22 @@ async def login(request: Request, username: str = Form(...), password: str = For
         and username == result[0][1]
         and verify_password(password, result[0][2])
     ):
-        return "Logged in!"
+        access_token = create_access_token(data={"sub": username})
+        return {"message": "Logged in!", "access_token": access_token, "token_type": "bearer"}
 
     return "The password is incorrect, or the user does not exist!"
 
 
+@app.post("/logout")
+async def logout(username: str = Depends(require_current_user)):
+    # JWT is stateless, so logout is handled client-side by removing the token.
+    # This endpoint exists for consistency and can be extended later.
+    return {"message": "Logged out successfully"}
+
+
 @app.post("/create-chat")
 async def create_chat(
-    request: Request, username: str = Form(...), title: str = Form(...)
+    request: Request, username: str = Depends(require_current_user), title: str = Form(...)
 ):
     # General: 30 requests per minute per IP
     rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="create-chat")
@@ -114,7 +127,7 @@ async def create_chat(
 
 @app.post("/delete-chat")
 async def delete_chat(
-    request: Request, username: str = Form(...), title: str = Form(...)
+    request: Request, username: str = Depends(require_current_user), title: str = Form(...)
 ):
     # General: 30 requests per minute per IP
     rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="delete-chat")
@@ -143,7 +156,7 @@ async def delete_chat(
 @app.post("/rename-chat")
 async def rename_chat(
     request: Request,
-    username: str = Form(...),
+    username: str = Depends(require_current_user),
     old_title: str = Form(...),
     new_title: str = Form(...),
 ):
@@ -174,11 +187,11 @@ async def rename_chat(
 
 @app.post("/upload")
 async def upload_file(
-    request: Request, file: UploadFile, user: str = Form(...), chat: str = Form(...)
+    request: Request, file: UploadFile, username: str = Depends(require_current_user), chat: str = Form(...)
 ):
     # General: 30 requests per minute per IP
     rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="upload")
-    result = receive_file(file, user, chat)
+    result = receive_file(file, username, chat)
     connection.commit()
     return result
 
@@ -186,7 +199,7 @@ async def upload_file(
 @app.post("/send-message")
 async def send_message(
     request: Request,
-    username: str = Form(...),
+    username: str = Depends(require_current_user),
     title: str = Form(...),
     message: str = Form(...),
     sender: str = Form(...),
@@ -219,7 +232,7 @@ async def send_message(
 
 
 @app.get("/get-chats")
-async def get_chats(username: str):
+async def get_chats(username: str = Depends(require_current_user)):
     if not contains_user(username):
         return []
 
@@ -231,7 +244,7 @@ async def get_chats(username: str):
 
 
 @app.get("/get-messages")
-async def get_messages(username: str, title: str):
+async def get_messages(username: str = Depends(require_current_user), title: str = ""):
     if not contains_user(username):
         return []
 
