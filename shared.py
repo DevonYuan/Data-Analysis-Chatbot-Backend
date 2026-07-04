@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 import psycopg2
 import os
 import bcrypt
+import secrets
+import resend
 
 load_dotenv()
 
@@ -27,6 +29,8 @@ supabase = create_client(
 )
 
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+resend.api_key = os.getenv("RESEND_API_KEY")
 
 # JWT Configuration
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
@@ -152,3 +156,65 @@ def empty_bucket():
     except Exception as e:
         print(f"Error emptying bucket: {e}")
         raise
+
+
+def generate_verification_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def store_verification_token(username: str, token: str):
+    expires = datetime.utcnow() + timedelta(minutes=10)
+    cursor.execute(
+        "UPDATE users SET verification_token = %s, verification_token_expires = %s WHERE username = %s",
+        (token, expires, username),
+    )
+    connection.commit()
+
+
+def send_verification_email(email: str, token: str):
+    frontend_url = os.getenv("FRONTEND_URL", "https://data-analysis-chatbot-frontend.onrender.com")
+    verification_link = f"{frontend_url}/verify-email?token={token}"
+    
+    resend.Emails.send({
+        "from": "onboarding@resend.dev",
+        "to": email,
+        "subject": "Verify your email address",
+        "html": f"""
+            <p>Click the link below to verify your email address:</p>
+            <p><a href="{verification_link}">Verify Email</a></p>
+            <p>This link will expire in 10 minutes.</p>
+        """,
+    })
+
+
+def verify_email_token(token: str) -> tuple[bool, str | None]:
+    cursor.execute(
+        "SELECT username, email_verified, verification_token_expires FROM users WHERE verification_token = %s",
+        (token,),
+    )
+    result = cursor.fetchone()
+    
+    if not result:
+        return False, "Invalid or expired verification token."
+    
+    username, email_verified, expires = result
+    
+    if email_verified:
+        return False, "Email is already verified."
+    
+    if datetime.utcnow() > expires:
+        return False, "Verification token has expired. Please request a new one."
+    
+    cursor.execute(
+        "UPDATE users SET email_verified = TRUE, verification_token = NULL, verification_token_expires = NULL WHERE username = %s",
+        (username,),
+    )
+    connection.commit()
+    
+    return True, username
+
+
+def is_user_verified(username: str) -> bool:
+    cursor.execute("SELECT email_verified FROM users WHERE username = %s", (username,))
+    result = cursor.fetchone()
+    return result[0] if result else False

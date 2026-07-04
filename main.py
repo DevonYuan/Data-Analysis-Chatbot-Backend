@@ -15,6 +15,11 @@ from shared import (
     verify_password,
     create_access_token,
     require_current_user,
+    generate_verification_token,
+    store_verification_token,
+    send_verification_email,
+    verify_email_token,
+    is_user_verified,
 )
 
 # Later: The only origin allowed should be the frontend!
@@ -62,9 +67,12 @@ async def register(
     )
     connection.commit()
     create_user_folder(username)
-    
-    access_token = create_access_token(data={"sub": username})
-    return {"message": "Username is now registered!", "access_token": access_token, "token_type": "bearer"}
+
+    token = generate_verification_token()
+    store_verification_token(username, token)
+    send_verification_email(username, token)
+
+    return {"message": "Account created! Please check your email to verify your account."}
 
 
 @app.post("/delete-user")
@@ -92,6 +100,8 @@ async def login(request: Request, username: str = Form(...), password: str = For
         and username == result[0][1]
         and verify_password(password, result[0][2])
     ):
+        if not is_user_verified(username):
+            return "Please verify your email before logging in."
         access_token = create_access_token(data={"sub": username})
         return {"message": "Logged in!", "access_token": access_token, "token_type": "bearer"}
 
@@ -103,6 +113,30 @@ async def logout(username: str = Depends(require_current_user)):
     # JWT is stateless, so logout is handled client-side by removing the token.
     # This endpoint exists for consistency and can be extended later.
     return {"message": "Logged out successfully"}
+
+
+@app.get("/verify-email")
+async def verify_email(token: str):
+    success, message = verify_email_token(token)
+    if success:
+        return {"message": "Email verified successfully! You can now log in."}
+    return {"message": message}
+
+
+@app.post("/resend-verification")
+async def resend_verification(request: Request, username: str = Form(...)):
+    rate_limit_ip(request, max_requests=3, window_seconds=300, endpoint="resend-verification")
+    cursor.execute("SELECT email_verified FROM users WHERE username = %s", (username,))
+    result = cursor.fetchone()
+    if not result:
+        return "User not found."
+    if result[0]:
+        return "Email is already verified."
+    
+    token = generate_verification_token()
+    store_verification_token(username, token)
+    send_verification_email(username, token)
+    return {"message": "Verification email sent! Please check your inbox."}
 
 
 @app.post("/create-chat")
