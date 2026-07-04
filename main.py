@@ -56,7 +56,17 @@ async def register(
     # Anti-brute-force: 5 registration attempts per minute per IP
     rate_limit_ip(request, max_requests=5, window_seconds=60, endpoint="register")
     if contains_user(username):
-        return "Username is taken!"
+        cursor.execute("SELECT email_verified FROM users WHERE username = %s", (username,))
+        result = cursor.fetchone()
+        if result and result[0]:
+            return "Username is taken!"
+        # Unverified user — wipe stale data and allow re-registration
+        cursor.execute("DELETE FROM users WHERE username = %s", (username,))
+        cursor.execute("DELETE FROM chats WHERE username = %s", (username,))
+        cursor.execute("DELETE FROM messages WHERE username = %s", (username,))
+        cursor.execute("DELETE FROM filenames WHERE username = %s", (username,))
+        connection.commit()
+        delete_user_folder(username)
 
     cursor.execute("SELECT COUNT(*) FROM users")
     length = cursor.fetchone()[0]
