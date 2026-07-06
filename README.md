@@ -29,8 +29,8 @@ flowchart TD
 ```
 
 ## Tech Stack 
-**Backend:** FastAPI, Pandas (Data analysis), jose (JWT based authentication), psycopg2 (Database connection), bcrypt (Hashing passwords) <br>
-**Frontend:** React + Vite (Javascript), React 3F and Drei (Visuals), React Router <br>
+**Backend:** FastAPI, Uvicorn (ASGI server), Pandas (Data analysis), PandasAI (AI for pandas), python-jose (JWT based authentication), psycopg2 (Database connection), bcrypt (Hashing passwords), python-multipart (Form data handling), python-dotenv (Environment variables), supabase (Storage and database client), sib-api-v3-sdk (Brevo SDK) <br>
+**Frontend:** React + Vite (Javascript), React 3F and Drei (Visuals), React Router, react-markdown (Markdown rendering), remark-gfm (GitHub flavored markdown), three (3D library) <br>
 **Deployment:** Docker, Supabase (Bucket storage and PostgreSQL database), Railway (Backend), Render (Frontend) <br>
 **Third Party APIs:** Gemini (AI features), Brevo (Sending emails) <br>
 
