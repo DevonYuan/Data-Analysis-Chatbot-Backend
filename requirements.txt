@@ -9,4 +9,4 @@ google-genai
 python-multipart
 bcrypt
 python-jose[cryptography]
-resend
+sib-api-v3-sdk

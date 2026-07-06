@@ -9,7 +9,8 @@ import psycopg2
 import os
 import bcrypt
 import secrets
-import resend
+import sib_api_v3_sdk
+from sib_api_v3_sdk.rest import ApiException
 
 load_dotenv()
 
@@ -30,7 +31,8 @@ supabase = create_client(
 
 gemini_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
-resend.api_key = os.getenv("RESEND_API_KEY")
+brevo_api_key = os.getenv("BREVO_API_KEY")
+brevo_sender_email = os.getenv("BREVO_SENDER_EMAIL")
 
 # JWT Configuration
 JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-in-production")
@@ -175,16 +177,31 @@ def send_verification_email(email: str, token: str):
     frontend_url = os.getenv("FRONTEND_URL", "https://data-analysis-chatbot-frontend.onrender.com")
     verification_link = f"{frontend_url}/verify-email?token={token}"
     
-    resend.Emails.send({
-        "from": "onboarding@resend.dev",
-        "to": email,
-        "subject": "Verify your email address",
-        "html": f"""
-            <p>Click the link below to verify your email address:</p>
-            <p><a href="{verification_link}">Verify Email</a></p>
-            <p>This link will expire in 10 minutes.</p>
-        """,
-    })
+    configuration = sib_api_v3_sdk.Configuration()
+    configuration.api_key['api-key'] = brevo_api_key
+    
+    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
+    
+    subject = "Verify your email address"
+    html_content = f"""
+        <p>Click the link below to verify your email address:</p>
+        <p><a href="{verification_link}">Verify Email</a></p>
+        <p>This link will expire in 10 minutes.</p>
+    """
+    sender = {"email": brevo_sender_email}
+    to = [{"email": email}]
+    
+    try:
+        api_instance.send_transac_email(
+            sib_api_v3_sdk.SendSmtpEmail(
+                sender=sender,
+                to=to,
+                subject=subject,
+                html_content=html_content
+            )
+        )
+    except ApiException as e:
+        print(f"Exception when calling TransactionalEmailsApi->send_transac_email: {e}")
 
 
 def verify_email_token(token: str) -> tuple[bool, str | None]:
