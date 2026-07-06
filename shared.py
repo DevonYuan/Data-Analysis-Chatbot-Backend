@@ -12,6 +12,8 @@ import secrets
 import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
 
+_EMAIL_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "email_templates", "verification_email.html")
+
 load_dotenv()
 
 connection = psycopg2.connect(
@@ -173,6 +175,11 @@ def store_verification_token(username: str, token: str):
     connection.commit()
 
 
+def _load_email_template() -> str:
+    with open(_EMAIL_TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        return f.read()
+
+
 def send_verification_email(email: str, token: str):
     frontend_url = os.getenv("FRONTEND_URL", "https://data-analysis-chatbot-frontend.onrender.com")
     verification_link = f"{frontend_url}/verify-email?token={token}"
@@ -183,11 +190,7 @@ def send_verification_email(email: str, token: str):
     api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
     
     subject = "Verify your email address"
-    html_content = f"""
-        <p>Click the link below to verify your email address:</p>
-        <p><a href="{verification_link}">Verify Email</a></p>
-        <p>This link will expire in 10 minutes.</p>
-    """
+    html_content = _load_email_template().replace("{{verification_link}}", verification_link)
     sender = {"email": brevo_sender_email}
     to = [{"email": email}]
     
