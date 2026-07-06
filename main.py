@@ -27,7 +27,11 @@ import os
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "").split(",") if origin.strip()],
+    allow_origins=[
+        origin.strip()
+        for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+        if origin.strip()
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -61,7 +65,9 @@ async def register(
     # Anti-brute-force: 5 registration attempts per minute per IP
     rate_limit_ip(request, max_requests=5, window_seconds=60, endpoint="register")
     if contains_user(username):
-        cursor.execute("SELECT email_verified FROM users WHERE username = %s", (username,))
+        cursor.execute(
+            "SELECT email_verified FROM users WHERE username = %s", (username,)
+        )
         result = cursor.fetchone()
         if result and result[0]:
             return "Username is taken!"
@@ -87,7 +93,9 @@ async def register(
     store_verification_token(username, token)
     send_verification_email(username, token)
 
-    return {"message": "Account created! Please check your email to verify your account."}
+    return {
+        "message": "Account created! Please check your email to verify your account."
+    }
 
 
 @app.post("/delete-user")
@@ -118,7 +126,11 @@ async def login(request: Request, username: str = Form(...), password: str = For
         if not is_user_verified(username):
             return "Please verify your email before logging in."
         access_token = create_access_token(data={"sub": username})
-        return {"message": "Logged in!", "access_token": access_token, "token_type": "bearer"}
+        return {
+            "message": "Logged in!",
+            "access_token": access_token,
+            "token_type": "bearer",
+        }
 
     return "The password is incorrect, or the user does not exist!"
 
@@ -155,14 +167,16 @@ async def verify_email(token: str):
 
 @app.post("/resend-verification")
 async def resend_verification(request: Request, username: str = Form(...)):
-    rate_limit_ip(request, max_requests=3, window_seconds=300, endpoint="resend-verification")
+    rate_limit_ip(
+        request, max_requests=3, window_seconds=300, endpoint="resend-verification"
+    )
     cursor.execute("SELECT email_verified FROM users WHERE username = %s", (username,))
     result = cursor.fetchone()
     if not result:
         return "User not found."
     if result[0]:
         return "Email is already verified."
-    
+
     token = generate_verification_token()
     store_verification_token(username, token)
     send_verification_email(username, token)
@@ -171,7 +185,9 @@ async def resend_verification(request: Request, username: str = Form(...)):
 
 @app.post("/create-chat")
 async def create_chat(
-    request: Request, username: str = Depends(require_current_user), title: str = Form(...)
+    request: Request,
+    username: str = Depends(require_current_user),
+    title: str = Form(...),
 ):
     # General: 30 requests per minute per IP
     rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="create-chat")
@@ -191,7 +207,9 @@ async def create_chat(
 
 @app.post("/delete-chat")
 async def delete_chat(
-    request: Request, username: str = Depends(require_current_user), title: str = Form(...)
+    request: Request,
+    username: str = Depends(require_current_user),
+    title: str = Form(...),
 ):
     # General: 30 requests per minute per IP
     rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="delete-chat")
@@ -251,7 +269,10 @@ async def rename_chat(
 
 @app.post("/upload")
 async def upload_file(
-    request: Request, file: UploadFile, username: str = Depends(require_current_user), chat: str = Form(...)
+    request: Request,
+    file: UploadFile,
+    username: str = Depends(require_current_user),
+    chat: str = Form(...),
 ):
     # General: 30 requests per minute per IP
     rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="upload")

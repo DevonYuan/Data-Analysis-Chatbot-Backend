@@ -12,7 +12,9 @@ import secrets
 import sib_api_v3_sdk
 from sib_api_v3_sdk.rest import ApiException
 
-_EMAIL_TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "email_templates", "verification_email.html")
+_EMAIL_TEMPLATE_PATH = os.path.join(
+    os.path.dirname(__file__), "email_templates", "verification_email.html"
+)
 
 load_dotenv()
 
@@ -24,7 +26,7 @@ connection = psycopg2.connect(
     password=os.getenv("SUPABASE_PASSWORD"),
 )
 
-connection.autocommit = True; 
+connection.autocommit = True
 cursor = connection.cursor()
 
 supabase = create_client(
@@ -81,12 +83,12 @@ async def require_current_user(token: str = Depends(oauth2_scheme)) -> str:
 
 def hash_password(password: str) -> str:
     salt = bcrypt.gensalt()
-    hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-    return hashed.decode('utf-8')
+    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+    return hashed.decode("utf-8")
 
 
 def verify_password(password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
+    return bcrypt.checkpw(password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
 def contains_user(username: str) -> bool:
@@ -181,26 +183,29 @@ def _load_email_template() -> str:
 
 
 def send_verification_email(email: str, token: str):
-    frontend_url = os.getenv("FRONTEND_URL", "https://data-analysis-chatbot-frontend.onrender.com")
+    frontend_url = os.getenv(
+        "FRONTEND_URL", "https://data-analysis-chatbot-frontend.onrender.com"
+    )
     verification_link = f"{frontend_url}/verify-email?token={token}"
-    
+
     configuration = sib_api_v3_sdk.Configuration()
-    configuration.api_key['api-key'] = brevo_api_key
-    
-    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(sib_api_v3_sdk.ApiClient(configuration))
-    
+    configuration.api_key["api-key"] = brevo_api_key
+
+    api_instance = sib_api_v3_sdk.TransactionalEmailsApi(
+        sib_api_v3_sdk.ApiClient(configuration)
+    )
+
     subject = "Verify your email address"
-    html_content = _load_email_template().replace("{{verification_link}}", verification_link)
+    html_content = _load_email_template().replace(
+        "{{verification_link}}", verification_link
+    )
     sender = {"email": brevo_sender_email}
     to = [{"email": email}]
-    
+
     try:
         api_instance.send_transac_email(
             sib_api_v3_sdk.SendSmtpEmail(
-                sender=sender,
-                to=to,
-                subject=subject,
-                html_content=html_content
+                sender=sender, to=to, subject=subject, html_content=html_content
             )
         )
     except ApiException as e:
@@ -213,24 +218,24 @@ def verify_email_token(token: str) -> tuple[bool, str | None]:
         (token,),
     )
     result = cursor.fetchone()
-    
+
     if not result:
         return False, "Invalid or expired verification token."
-    
+
     username, email_verified, expires = result
-    
+
     if email_verified:
         return False, "Email is already verified."
-    
+
     if datetime.utcnow() > expires:
         return False, "Verification token has expired. Please request a new one."
-    
+
     cursor.execute(
         "UPDATE users SET email_verified = TRUE, verification_token = NULL, verification_token_expires = NULL WHERE username = %s",
         (username,),
     )
     connection.commit()
-    
+
     return True, username
 
 

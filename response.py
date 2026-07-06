@@ -15,6 +15,7 @@ import io
 import contextlib
 import pandas as pd
 
+
 class GeminiLLM(LLM):
     def __init__(self, model="gemini-2.5-flash"):
         super().__init__()
@@ -27,6 +28,7 @@ class GeminiLLM(LLM):
             input=prompt,
         )
         return response.output_text
+
 
 def receive_file(file: UploadFile, user: str, chat_title: str):
     if not contains_user(user) or not contains_chat(user, chat_title):
@@ -50,6 +52,7 @@ def receive_file(file: UploadFile, user: str, chat_title: str):
 
     return file_url
 
+
 def save_uploaded_file(file: UploadFile, user: str):
     file_bytes = file.file.read()
     path = f"{user}/{file.filename}"
@@ -57,6 +60,7 @@ def save_uploaded_file(file: UploadFile, user: str):
     supabase.storage.from_("user-uploads").upload(path, file_bytes)
     url = supabase.storage.from_("user-uploads").get_public_url(path)
     return url
+
 
 def answer_question(user: str, chat_title: str, question: str):
     if not contains_user(user):
@@ -66,7 +70,10 @@ def answer_question(user: str, chat_title: str, question: str):
         return "The user does not have a chat with this title"
 
     # Get chat messages ordered by id
-    cursor.execute("SELECT message FROM messages WHERE username = %s AND title = %s", (user, chat_title))
+    cursor.execute(
+        "SELECT message FROM messages WHERE username = %s AND title = %s",
+        (user, chat_title),
+    )
     chat_messages = [row[0] for row in cursor.fetchall()]
 
     # Check if file exists and load its content
@@ -147,6 +154,7 @@ def answer_question(user: str, chat_title: str, question: str):
     # fallback
     return conceptual_question(question, final_context)
 
+
 def conceptual_question(question: str, context: str = ""):
     prompt = f"Given the following context:\\n{context}\\n\\nAnswer the following question conceptually:\\n{question}"
     response = gemini_client.interactions.create(
@@ -154,6 +162,7 @@ def conceptual_question(question: str, context: str = ""):
         input=prompt,
     )
     return response.output_text
+
 
 def calculation_question(question: str, user: str, chat_title: str, context: str = ""):
     # Load data if file exists (same as before)
@@ -204,6 +213,7 @@ def calculation_question(question: str, user: str, chat_title: str, context: str
 
     return conceptual_question(question, context)
 
+
 def load_dataframe_from_url(file_url: str, extension: str):
     path = file_url.split("/user-uploads/")[1]
     file_data = supabase.storage.from_("user-uploads").download(path)
@@ -216,6 +226,7 @@ def load_dataframe_from_url(file_url: str, extension: str):
     elif extension == ".xlsx":
         return pd.read_excel(file_bytes)
 
+
 def run_and_capture(code_str: str, data: pd.DataFrame | None):
     buffer = io.StringIO()
     sandbox_globals = {"pd": pd}
@@ -227,6 +238,7 @@ def run_and_capture(code_str: str, data: pd.DataFrame | None):
         exec(code_str, sandbox_globals)
 
     return buffer.getvalue()
+
 
 def irrelevant_question(question: str, context: str = ""):
     prompt = (
@@ -242,6 +254,7 @@ def irrelevant_question(question: str, context: str = ""):
         input=prompt,
     )
     return response.output_text
+
 
 def pandasai_fallback(data: pd.DataFrame, question: str):
     llm = GeminiLLM(model="gemini-2.5-flash")
