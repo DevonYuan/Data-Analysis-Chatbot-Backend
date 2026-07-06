@@ -37,3 +37,10 @@ flowchart TD
 **For Local Development:** <br>
 - AI features used qwen2.5-coder, running on Ollama 
 - A local PostgreSQL database was created with PgAdmin4.
+
+
+## Security Features
+- Encryption 
+- JWT based authentication
+- Email verification on signup 
+- API Rate Limiting 
