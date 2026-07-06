@@ -52,7 +52,11 @@ def wipe():
 
 @app.post("/register")
 async def register(
-    request: Request, username: str = Form(...), password: str = Form(...)
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    first_name: str = Form(...),
+    last_name: str = Form(...),
 ):
     # Anti-brute-force: 5 registration attempts per minute per IP
     rate_limit_ip(request, max_requests=5, window_seconds=60, endpoint="register")
@@ -73,8 +77,8 @@ async def register(
     length = cursor.fetchone()[0]
     hashed_password = hash_password(password)
     cursor.execute(
-        "INSERT INTO users (id, username, password) VALUES (%s, %s, %s)",
-        (length + 1, username, hashed_password),
+        "INSERT INTO users (id, username, password, first_name, last_name) VALUES (%s, %s, %s, %s, %s)",
+        (length + 1, username, hashed_password, first_name, last_name),
     )
     connection.commit()
     create_user_folder(username)
@@ -124,6 +128,21 @@ async def logout(username: str = Depends(require_current_user)):
     # JWT is stateless, so logout is handled client-side by removing the token.
     # This endpoint exists for consistency and can be extended later.
     return {"message": "Logged out successfully"}
+
+
+@app.get("/get-user-profile")
+async def get_user_profile(username: str = Depends(require_current_user)):
+    if not contains_user(username):
+        return {"first_name": "", "last_name": ""}
+
+    cursor.execute(
+        "SELECT first_name, last_name FROM users WHERE username = %s",
+        (username,),
+    )
+    result = cursor.fetchone()
+    if result:
+        return {"first_name": result[0], "last_name": result[1]}
+    return {"first_name": "", "last_name": ""}
 
 
 @app.get("/verify-email")
