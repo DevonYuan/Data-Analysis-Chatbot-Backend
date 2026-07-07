@@ -44,3 +44,5 @@ flowchart TD
 - JWT based authentication
 - Email verification on signup 
 - API Rate Limiting 
+
+A security note on the AI generated code: The only context we pass into the AI is the user's question, the chat history, and the dataset, if applicable. The AI does NOT have access to sensitive information such as the user and the environment variables. 
