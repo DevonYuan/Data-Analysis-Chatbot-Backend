@@ -23,7 +23,7 @@ from shared import (
 )
 import os
 
-# Later: The only origin allowed should be the frontend!
+
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
