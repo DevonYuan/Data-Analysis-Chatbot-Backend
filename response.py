@@ -52,7 +52,7 @@ def receive_file(file: UploadFile, user: str, chat_title: str):
 
     filename = file.filename
     extension = os.path.splitext(filename)[1].lower()
-    if extension not in [".csv", ".tsv", ".xlsx"]:
+    if extension not in [".csv", ".tsv", ".xlsx", ".xls", ".txt", ".json", ".parquet", ".feather"]:
         return "Unsupported file type"
 
     if contains_file(user, chat_title):
@@ -107,7 +107,7 @@ def answer_question(user: str, chat_title: str, question: str):
             extension = os.path.splitext(file_url)[1].lower()
             # Load dataframe
             data = load_dataframe_from_url(file_url, extension)
-            file_content = data.to_string()
+            file_content = "Columns: " + ", ".join(data.columns.tolist())
 
     # Build context parts
     context_parts = []
@@ -248,8 +248,16 @@ def load_dataframe_from_url(file_url: str, extension: str):
         return pd.read_csv(file_bytes)
     elif extension == ".tsv":
         return pd.read_csv(file_bytes, sep="\t")
-    elif extension == ".xlsx":
+    elif extension == ".xlsx" or extension == ".xls":
         return pd.read_excel(file_bytes)
+    elif extension == ".txt":
+        return pd.read_csv(file_bytes, sep="\s+")
+    elif extension == ".json":
+        return pd.read_json(file_bytes)
+    elif extension == ".parquet":
+        return pd.read_parquet(file_bytes)
+    elif extension == ".feather":
+        return pd.read_feather(file_bytes)
 
 
 def run_and_capture(code_str: str, data: pd.DataFrame | None):

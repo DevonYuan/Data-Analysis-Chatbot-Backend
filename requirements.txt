@@ -10,3 +10,5 @@ python-multipart
 bcrypt
 python-jose[cryptography]
 sib-api-v3-sdk
+xlrd
+pyarrow
