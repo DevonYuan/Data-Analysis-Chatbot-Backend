@@ -3,3 +3,6 @@
 
 # Python cache 
 __pycache__
+
+# Used for debugging 
+debug.log

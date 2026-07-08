@@ -14,6 +14,22 @@ import os
 import io
 import contextlib
 import pandas as pd
+import sys
+import logging
+
+# Configure logging to write to file
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('debug.log'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+logger.info("response.py module loaded")
+logger.info(f"stdout is redirected: {sys.stdout.name}")
 
 
 class GeminiLLM(LLM):
@@ -63,6 +79,7 @@ def save_uploaded_file(file: UploadFile, user: str):
 
 
 def answer_question(user: str, chat_title: str, question: str):
+    logger.info(f"answer_question called for user={user}, chat={chat_title}")
     if not contains_user(user):
         return "This user does not exist"
 
@@ -144,14 +161,19 @@ def answer_question(user: str, chat_title: str, question: str):
         input=classification_prompt,
     )
     qtype = response.output_text.strip().lower()
+    logger.info(f"Question classified as: {qtype}")
 
     if qtype == "conceptual":
+        logger.info("Taking conceptual path")
         return conceptual_question(question, final_context)
     if qtype == "calculation":
+        logger.info("Taking calculation path")
         return calculation_question(question, user, chat_title, final_context)
     if qtype == "irrelevant":
+        logger.info("Taking irrelevant path")
         return irrelevant_question(question, final_context)
     # fallback
+    logger.info("Taking fallback conceptual path")
     return conceptual_question(question, final_context)
 
 
@@ -165,6 +187,7 @@ def conceptual_question(question: str, context: str = ""):
 
 
 def calculation_question(question: str, user: str, chat_title: str, context: str = ""):
+    logger.info(f"calculation_question called for user={user}, chat={chat_title}")
     # Load data if file exists (same as before)
     data = None
     if contains_file(user, chat_title):
@@ -177,6 +200,7 @@ def calculation_question(question: str, user: str, chat_title: str, context: str
             file_url = row[0]
             extension = os.path.splitext(file_url)[1].lower()
             data = load_dataframe_from_url(file_url, extension)
+            logger.info(f"Data loaded successfully, shape: {data.shape}")
 
     # Build prompt with context
     prompt = (
@@ -204,9 +228,10 @@ def calculation_question(question: str, user: str, chat_title: str, context: str
 
         try:
             result = run_and_capture(code, data)
+            logger.info(f"Generated code:\n{code}")
             return result
         except Exception as e:
-            print(f"Execution error for user={user}, chat={chat_title}: {e}")
+            logger.error(f"Execution error for user={user}, chat={chat_title}: {e}")
 
     if data is not None:
         return pandasai_fallback(data, question)
