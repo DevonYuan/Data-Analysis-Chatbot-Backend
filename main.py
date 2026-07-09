@@ -10,6 +10,7 @@ from shared import (
     contains_file,
     create_user_folder,
     delete_user_folder,
+    delete_chat_folder,
     empty_bucket,
     hash_password,
     verify_password,
@@ -231,6 +232,8 @@ async def delete_chat(
         "DELETE FROM filenames WHERE username = %s AND chat = %s",
         (username, title),
     )
+    # Delete files from bucket storage
+    delete_chat_folder(username, title)
     connection.commit()
     return "The chat data has been erased!"
 
@@ -289,12 +292,12 @@ async def send_message(
     message: str = Form(...),
     sender: str = Form(...),
 ):
-    # AI abuse prevention: 10 AI messages per minute per user
+    # AI abuse prevention: 30 AI messages per minute per user
     rate_limit_user(
-        username, max_requests=10, window_seconds=60, endpoint="send-message"
+        username, max_requests=30, window_seconds=60, endpoint="send-message"
     )
     # Also limit by IP as a secondary guard
-    rate_limit_ip(request, max_requests=20, window_seconds=60, endpoint="send-message")
+    rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="send-message")
     if not contains_user(username):
         return "The database does not contain this user!"
 
@@ -317,7 +320,9 @@ async def send_message(
 
 
 @app.get("/get-chats")
-async def get_chats(username: str = Depends(require_current_user)):
+async def get_chats(request: Request, username: str = Depends(require_current_user)):
+    # General: 30 requests per minute per IP
+    rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="get-chats")
     if not contains_user(username):
         return []
 
@@ -329,7 +334,9 @@ async def get_chats(username: str = Depends(require_current_user)):
 
 
 @app.get("/get-messages")
-async def get_messages(username: str = Depends(require_current_user), title: str = ""):
+async def get_messages(request: Request, username: str = Depends(require_current_user), title: str = ""):
+    # General: 30 requests per minute per IP
+    rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="get-messages")
     if not contains_user(username):
         return []
 
