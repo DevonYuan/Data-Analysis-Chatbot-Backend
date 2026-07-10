@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, UploadFile, Form, Depends
 from rate_limiter import rate_limit_ip, rate_limit_user
 from fastapi.middleware.cors import CORSMiddleware
-from response import receive_file, answer_question
+from response import receive_file, answer_question, generate_graph_data
 from shared import (
     connection,
     cursor,
@@ -333,6 +333,29 @@ async def get_chats(request: Request, username: str = Depends(require_current_us
     return [row[0] for row in rows]
 
 
+@app.get("/get-filenames")
+async def get_filenames(
+    request: Request,
+    username: str = Depends(require_current_user),
+    chat: str = "",
+):
+    # General: 30 requests per minute per IP
+    rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="get-filenames")
+    if not contains_user(username):
+        return []
+
+    if not contains_chat(username, chat):
+        return []
+
+    cursor.execute(
+        "SELECT filename FROM filenames WHERE username = %s AND chat = %s",
+        (username, chat),
+    )
+    rows = cursor.fetchall()
+
+    return [row[0] for row in rows]
+
+
 @app.get("/get-messages")
 async def get_messages(request: Request, username: str = Depends(require_current_user), title: str = ""):
     # General: 30 requests per minute per IP
@@ -350,3 +373,22 @@ async def get_messages(request: Request, username: str = Depends(require_current
     rows = cursor.fetchall()
 
     return [{"sender": row[1], "text": row[0]} for row in rows]
+
+
+@app.get("/get-graph-data")
+async def get_graph_data(
+    request: Request,
+    username: str = Depends(require_current_user),
+    title: str = "",
+    graph_type: str = "histogram",
+    column: str = None
+):
+    # General: 30 requests per minute per IP
+    rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="get-graph-data")
+    if not contains_user(username):
+        return {"error": "User not found"}
+
+    if not contains_chat(username, title):
+        return {"error": "Chat not found"}
+
+    return generate_graph_data(username, title, graph_type, column)

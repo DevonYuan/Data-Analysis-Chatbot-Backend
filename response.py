@@ -16,6 +16,9 @@ import contextlib
 import pandas as pd
 import sys
 import logging
+import json
+import base64
+import numpy as np
 
 # Configure logging to write to file
 logging.basicConfig(
@@ -298,3 +301,171 @@ def pandasai_fallback(data: pd.DataFrame, question: str):
         return str(answer)
     except Exception as e:
         return f"PandasAI failed to answer the question: {e}"
+
+
+def generate_graph_data(user: str, chat_title: str, graph_type: str = "histogram", column: str = None):
+    """Generate graph data for visualization"""
+    logger.info(f"generate_graph_data called for user={user}, chat={chat_title}, graph_type={graph_type}")
+    
+    if not contains_file(user, chat_title):
+        return {"error": "No file uploaded for this chat"}
+    
+    # Load file URL
+    cursor.execute(
+        "SELECT file_url FROM filenames WHERE username = %s AND chat = %s",
+        (user, chat_title),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return {"error": "File not found"}
+    
+    file_url = row[0]
+    extension = os.path.splitext(file_url)[1].lower()
+    data = load_dataframe_from_url(file_url, extension)
+    
+    if data is None:
+        return {"error": "Failed to load data"}
+    
+    # Get first column if none specified
+    if column is None:
+        column = data.columns[0]
+    
+    # Ensure column exists
+    if column not in data.columns:
+        return {"error": f"Column '{column}' not found in data"}
+    
+    # Generate graph data based on type
+    try:
+        if graph_type == "histogram":
+            return generate_histogram_data(data, column)
+        elif graph_type == "scatter":
+            return generate_scatter_data(data, column)
+        elif graph_type == "bar":
+            return generate_bar_data(data, column)
+        elif graph_type == "line":
+            return generate_line_data(data, column)
+        else:
+            return generate_histogram_data(data, column)
+    except Exception as e:
+        logger.error(f"Error generating graph data: {e}")
+        return {"error": str(e)}
+
+
+def generate_histogram_data(data: pd.DataFrame, column: str):
+    """Generate histogram data for a column"""
+    # Get numeric data
+    col_data = data[column].dropna()
+    
+    # Try to convert to numeric if possible
+    try:
+        col_data = pd.to_numeric(col_data)
+    except:
+        # If not numeric, use value counts for categorical data
+        value_counts = col_data.value_counts()
+        return {
+            "type": "bar",
+            "data": {
+                "x": value_counts.index.tolist(),
+                "y": value_counts.values.tolist(),
+                "type": "bar"
+            },
+            "layout": {
+                "title": f"Distribution of {column}",
+                "xaxis": {"title": column},
+                "yaxis": {"title": "Count"}
+            }
+        }
+    
+    # For numeric data, create histogram
+    import numpy as np
+    hist, bin_edges = np.histogram(col_data, bins=20)
+    
+    # Use bin centers for x values
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+    
+    return {
+        "type": "histogram",
+        "data": {
+            "x": col_data.tolist(),
+            "type": "histogram",
+            "nbinsx": 20,
+            "name": column
+        },
+        "layout": {
+            "title": f"Distribution of {column}",
+            "xaxis": {"title": column},
+            "yaxis": {"title": "Frequency"}
+        }
+    }
+
+
+def generate_scatter_data(data: pd.DataFrame, column: str):
+    """Generate scatter plot data - use first numeric column vs second numeric column"""
+    numeric_cols = data.select_dtypes(include=[np.number]).columns.tolist()
+    
+    if len(numeric_cols) < 2:
+        # Fall back to histogram if not enough numeric columns
+        return generate_histogram_data(data, column)
+    
+    x_col = numeric_cols[0]
+    y_col = numeric_cols[1] if len(numeric_cols) > 1 else numeric_cols[0]
+    
+    return {
+        "type": "scatter",
+        "data": {
+            "x": data[x_col].dropna().tolist(),
+            "y": data[y_col].dropna().tolist(),
+            "mode": "markers",
+            "type": "scatter",
+            "name": f"{x_col} vs {y_col}"
+        },
+        "layout": {
+            "title": f"{x_col} vs {y_col}",
+            "xaxis": {"title": x_col},
+            "yaxis": {"title": y_col}
+        }
+    }
+
+
+def generate_bar_data(data: pd.DataFrame, column: str):
+    """Generate bar chart data using value counts"""
+    value_counts = data[column].value_counts().head(20)
+    
+    return {
+        "type": "bar",
+        "data": {
+            "x": value_counts.index.tolist(),
+            "y": value_counts.values.tolist(),
+            "type": "bar"
+        },
+        "layout": {
+            "title": f"Count of {column}",
+            "xaxis": {"title": column},
+            "yaxis": {"title": "Count"}
+        }
+    }
+
+
+def generate_line_data(data: pd.DataFrame, column: str):
+    """Generate line chart data - assumes data is ordered or uses index"""
+    col_data = data[column].dropna()
+    
+    try:
+        col_data = pd.to_numeric(col_data)
+    except:
+        return generate_bar_data(data, column)
+    
+    return {
+        "type": "line",
+        "data": {
+            "x": list(range(len(col_data))),
+            "y": col_data.tolist(),
+            "mode": "lines",
+            "type": "scatter"
+        },
+        "layout": {
+            "title": f"{column} over index",
+            "xaxis": {"title": "Index"},
+            "yaxis": {"title": column}
+        }
+    }
