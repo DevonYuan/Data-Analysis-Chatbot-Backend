@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Request, UploadFile, Form, Depends
 from rate_limiter import rate_limit_ip, rate_limit_user
 from fastapi.middleware.cors import CORSMiddleware
-from response import receive_file, answer_question, generate_graph_data
+from response import receive_file, answer_question, generate_graph_data, get_dataset_metadata
 from shared import (
     connection,
     cursor,
@@ -139,6 +139,7 @@ async def login(request: Request, username: str = Form(...), password: str = For
 @app.post("/logout")
 async def logout(username: str = Depends(require_current_user)):
     # JWT is stateless, so logout is handled client-side by removing the token.
+    # (As in deleting it from local storage)
     # This endpoint exists for consistency and can be extended later.
     return {"message": "Logged out successfully"}
 
@@ -392,3 +393,20 @@ async def get_graph_data(
         return {"error": "Chat not found"}
 
     return generate_graph_data(username, title, graph_type, column)
+
+
+@app.get("/get-dataset-metadata")
+async def get_dataset_metadata_route(
+    request: Request,
+    username: str = Depends(require_current_user),
+    chat: str = "",
+):
+    # General: 30 requests per minute per IP
+    rate_limit_ip(request, max_requests=30, window_seconds=60, endpoint="get-dataset-metadata")
+    if not contains_user(username):
+        return {"error": "User not found"}
+
+    if not contains_chat(username, chat):
+        return {"error": "Chat not found"}
+
+    return get_dataset_metadata(username, chat)

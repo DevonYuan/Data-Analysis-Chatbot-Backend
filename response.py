@@ -469,3 +469,54 @@ def generate_line_data(data: pd.DataFrame, column: str):
             "yaxis": {"title": column}
         }
     }
+
+
+def get_dataset_metadata(user: str, chat_title: str):
+    """Retrieve metadata about the dataset uploaded for a chat."""
+    logger.info(f"get_dataset_metadata called for user={user}, chat={chat_title}")
+
+    if not contains_file(user, chat_title):
+        return {"error": "No file uploaded for this chat"}
+
+    cursor.execute(
+        "SELECT filename, file_url FROM filenames WHERE username = %s AND chat = %s",
+        (user, chat_title),
+    )
+    row = cursor.fetchone()
+    if not row:
+        return {"error": "File not found"}
+
+    filename = row[0]
+    file_url = row[1]
+    extension = os.path.splitext(file_url)[1].lower()
+
+    try:
+        data = load_dataframe_from_url(file_url, extension)
+        
+        if data is None:
+            return {"error": "Failed to load data"}
+
+        # Estimate size in memory for a rough file size estimate (not exact, but requested by user)
+        # memory_usage returns bytes.
+        size_bytes = data.memory_usage(deep=True).sum()
+        
+        if size_bytes < 1024:
+            size_str = f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            size_str = f"{size_bytes / 1024:.1f} KB"
+        else:
+            size_str = f"{size_bytes / (1024 * 1024):.1f} MB"
+
+        num_rows = len(data)
+        columns_info = {col: num_rows for col in data.columns}
+
+        return {
+            "name": filename,
+            "type": extension.upper().replace(".", ""),
+            "size": size_str,
+            "rows": num_rows,
+            "columns": columns_info
+        }
+    except Exception as e:
+        logger.error(f"Error fetching dataset metadata: {e}")
+        return {"error": str(e)}
