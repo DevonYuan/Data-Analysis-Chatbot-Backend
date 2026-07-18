@@ -154,15 +154,13 @@ def delete_user_folder(username: str):
         print(f"Error deleting user folder: {e}")
 
 
-def delete_chat_folder(username: str, chat: str):
-    """Delete all files associated with a specific chat from bucket storage."""
+def delete_user_file(username: str, filename: str):
+    """Delete a specific file for a user from bucket storage."""
     try:
-        prefix = f"{username}/{chat}"
-        paths = _collect_bucket_paths(prefix)
-        if paths:
-            supabase.storage.from_(BUCKET_NAME).remove(paths)
+        path = f"{username}/{filename}"
+        supabase.storage.from_(BUCKET_NAME).remove([path])
     except Exception as e:
-        print(f"Error deleting chat folder for {username}/{chat}: {e}")
+        print(f"Error deleting file {path}: {e}")
 
 
 def empty_bucket():

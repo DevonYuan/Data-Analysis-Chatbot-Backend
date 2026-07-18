@@ -10,7 +10,7 @@ from shared import (
     contains_file,
     create_user_folder,
     delete_user_folder,
-    delete_chat_folder,
+    delete_user_file,
     empty_bucket,
     hash_password,
     verify_password,
@@ -221,6 +221,10 @@ async def delete_chat(
     if not contains_chat(username, title):
         return "The user does not contain a chat with this title!"
 
+    # Find all files associated with this chat BEFORE deleting the chat from DB
+    cursor.execute("SELECT filename FROM filenames WHERE username = %s AND chat = %s", (username, title))
+    files_to_delete = cursor.fetchall()
+
     cursor.execute(
         "DELETE FROM chats WHERE username = %s AND title = %s",
         (username, title),
@@ -233,8 +237,13 @@ async def delete_chat(
         "DELETE FROM filenames WHERE username = %s AND chat = %s",
         (username, title),
     )
-    # Delete files from bucket storage
-    delete_chat_folder(username, title)
+
+    # Delete files from bucket storage if they are not used by any other chats
+    for (filename,) in files_to_delete:
+        cursor.execute("SELECT COUNT(*) FROM filenames WHERE username = %s AND filename = %s", (username, filename))
+        if cursor.fetchone()[0] == 0:
+            delete_user_file(username, filename)
+
     connection.commit()
     return "The chat data has been erased!"
 
